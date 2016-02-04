@@ -3,7 +3,7 @@ require "logstash/outputs/base"
 require "logstash/namespace"
 
 # An example output that does nothing.
-class LogStash::Outputs::Example < LogStash::Outputs::Base
+class LogStash::Outputs::Firehose < LogStash::Outputs::Base
   config_name "example"
 
   public
@@ -14,4 +14,4 @@ class LogStash::Outputs::Example < LogStash::Outputs::Base
   def receive(event)
     return "Event received"
   end # def event
-end # class LogStash::Outputs::Example
+end # class LogStash::Outputs::Firehose
