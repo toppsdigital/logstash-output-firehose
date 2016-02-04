@@ -1,7 +1,7 @@
 # encoding: utf-8
 require "logstash/devutils/rspec/spec_helper"
 require "logstash/outputs/firehose"
-require "logstash/codecs/plain"
+require "logstash/codecs/json_lines"
 require "logstash/event"
 
 describe LogStash::Outputs::Firehose do
