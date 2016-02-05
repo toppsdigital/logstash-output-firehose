@@ -16,6 +16,8 @@ require "fileutils"
 # Make sure you have permissions to put records into Firehose stream.
 # Also be sure to run logstash as super user to establish a connection.
 #
+# AWS SDK, Firehose client: http://docs.aws.amazon.com/sdkforruby/api/Aws/Firehose/Client.html
+#
 # #### Usage:
 # This is an example of logstash config:
 # [source,ruby]
@@ -28,7 +30,7 @@ require "fileutils"
 #     codec => "json_lines"                   (optional, default 'line')
 #     aws_credentials_file => "/path/file"    (optional, default: none)
 #     proxy_uri => "proxy URI"                (optional, default: none)
-#     use_ssl => true|false                   (optional, default: ???)
+#     use_ssl => true|false                   (optional, default: true)
 #   }
 # }
 #
@@ -45,6 +47,7 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
   default :codec, "line"
 
   # Firehose stream info
+  config :use_ssl, :validate => :boolean, :default => true
   config :region, :validate => :string, :default => "us-west-2"
   config :stream, :validate => :string
   config :access_key_id, :validate => :string
@@ -52,20 +55,20 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
 
   #
   # Register plugin
-  # TODO
   public
   def register
     require "aws-sdk"
     # required if using ruby version < 2.0
     # http://ruby.awsblog.com/post/Tx16QY1CI5GVBFT/Threading-with-the-AWS-SDK-for-Ruby
-    AWS.eager_autoload!(AWS::Firehose)
+    #Aws.eager_autoload!(Aws::Firehose)
+    Aws.eager_autoload!(services: %w(Firehose))
 
     # Create Firehose API client
     @firehose = aws_firehose_client
 
     # Validate stream name
     if @stream.nil? || @stream.empty?
-      @logger.error("S3: stream name is empty", :stream => @stream)
+      @logger.error("Firehose: stream name is empty", :stream => @stream)
       raise LogStash::ConfigurationError, "Firehose: stream name is empty"
     end
     if @stream && @stream !~ FIREHOSE_STREAM_VALID_CHARACTERS
@@ -73,7 +76,7 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
       raise LogStash::ConfigurationError, "Firehose: stream name contains invalid characters"
     end
 
-    # Register coder: comma separated line -> JSON, call handler after encoded to deliver data to Firehose
+    # Register coder: comma separated line -> SPECIFIED_CODEC_FMT, call handler after to deliver encoded data to Firehose
     @codec.on_event do |event, encoded_event|
       handle_event(encoded_event)
     end
@@ -95,7 +98,7 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
   private
   def aws_firehose_client
     @logger.info "Registering Firehose output", :stream => @stream, :region => @region
-    @firehose = AWS::Firehose::Client.new(aws_full_options)
+    @firehose = Aws::Firehose::Client.new(aws_full_options)
   end
 
   # Build and return AWS client options map
@@ -105,6 +108,7 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
   end
 
   # Evaluate AWS endpoint for Firehose based on specified @region option
+  public
   def aws_service_endpoint(region)
     return {
         :firehose_endpoint => "firehose.#{region}.amazonaws.com"
@@ -114,23 +118,28 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
   # Handle encoded event, specifically deliver received event into Firehose stream
   private
   def handle_event(encoded_event)
-    # TODO
-    @logger.warn "TODO implement Firehose delivery"
-    @logger.warn "encoded_event: #{encoded_event}"
+    # TODO Multithreaded workers pool?
+    push_data_into_stream encoded_event
+  end
 
-    # if write_events_to_multiple_files?
-    #   if rotate_events_log?
-    #     @logger.debug("S3: tempfile is too large, let's bucket it and create new file", :tempfile => File.basename(@tempfile))
-    #
-    #     move_file_to_bucket_async(@tempfile.path)
-    #     next_page
-    #     create_temporary_file
-    #   else
-    #     @logger.debug("S3: tempfile file size report.", :tempfile_size => @tempfile.size, :size_file => @size_file)
-    #   end
-    # end
-    #
-    # write_to_tempfile(encoded_event)
+  # Push encoded data into Firehose stream
+  private
+  def push_data_into_stream(encoded_event)
+    @logger.debug "Pushing encoded event: #{encoded_event}"
+
+    begin
+      @firehose.put_record({
+        delivery_stream_name: @stream,
+        record: {
+            data: encoded_event
+        }
+      })
+    rescue Aws::Errors::Base => error
+      # TODO Retry policy
+      # TODO Keep failed events somewhere, probably in fallback file
+      @logger.error "Firehose: AWS error", :error => error
+      raise LogStash::Error, "Firehose: AWS data delivery error: #{error}"
+    end
   end
 
 end # class LogStash::Outputs::Firehose
