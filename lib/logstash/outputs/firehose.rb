@@ -30,16 +30,21 @@ require "fileutils"
 #     codec => "json_lines"                   (optional, default 'line')
 #     aws_credentials_file => "/path/file"    (optional, default: none)
 #     proxy_uri => "proxy URI"                (optional, default: none)
-#     use_ssl => true|false                   (optional, default: true)
 #   }
 # }
 #
 
 class LogStash::Outputs::Firehose < LogStash::Outputs::Base
-  include LogStash::PluginMixins::AwsConfig
+  include LogStash::PluginMixins::AwsConfig::V2
 
   TEMPFILE_EXTENSION = "txt"
   FIREHOSE_STREAM_VALID_CHARACTERS = /[\w\-]/
+
+  # make properties visible for tests
+  attr_accessor :stream
+  attr_accessor :access_key_id
+  attr_accessor :secret_access_key
+  attr_accessor :codec
 
   config_name "firehose"
 
@@ -47,7 +52,6 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
   default :codec, "line"
 
   # Firehose stream info
-  config :use_ssl, :validate => :boolean, :default => true
   config :region, :validate => :string, :default => "us-west-2"
   config :stream, :validate => :string
   config :access_key_id, :validate => :string
@@ -111,7 +115,8 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
   public
   def aws_service_endpoint(region)
     return {
-        :firehose_endpoint => "firehose.#{region}.amazonaws.com"
+        :region => region,
+        :endpoint => "https://firehose.#{region}.amazonaws.com"
     }
   end
 
@@ -134,7 +139,8 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
             data: encoded_event
         }
       })
-    rescue Aws::Errors::Base => error
+    # rescue Aws::Errors::Base => error
+    rescue RuntimeError => error
       # TODO Retry policy
       # TODO Keep failed events somewhere, probably in fallback file
       @logger.error "Firehose: AWS error", :error => error
