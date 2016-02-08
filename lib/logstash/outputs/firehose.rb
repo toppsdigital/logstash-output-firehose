@@ -1,4 +1,5 @@
 # encoding: utf-8
+require "aws-sdk"
 require "logstash/outputs/base"
 require "logstash/namespace"
 require "logstash/plugin_mixins/aws_config"
@@ -25,9 +26,11 @@ require "fileutils"
 #   firehose {
 #     access_key_id => "AWS ACCESS KEY"       (required)
 #     secret_access_key => "AWS SECRET KEY"   (required)
-#     region => "us-west-2"                   (required)
+#     region => "us-east-1"                   (required)
 #     stream => "firehose-stream-name"        (required)
-#     codec => "json_lines"                   (optional, default 'line')
+#     codec => plain {
+#       format: "%{message}"
+#     }                                       (optional, default: plain)
 #     aws_credentials_file => "/path/file"    (optional, default: none)
 #     proxy_uri => "proxy URI"                (optional, default: none)
 #   }
@@ -49,10 +52,10 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
   config_name "firehose"
 
   # Output coder
-  default :codec, "line"
+  default :codec, "plain"
 
   # Firehose stream info
-  config :region, :validate => :string, :default => "us-west-2"
+  config :region, :validate => :string, :default => "us-east-1"
   config :stream, :validate => :string
   config :access_key_id, :validate => :string
   config :secret_access_key, :validate => :string
@@ -61,11 +64,11 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
   # Register plugin
   public
   def register
-    require "aws-sdk"
+    # require "aws-sdk"
     # required if using ruby version < 2.0
     # http://ruby.awsblog.com/post/Tx16QY1CI5GVBFT/Threading-with-the-AWS-SDK-for-Ruby
     #Aws.eager_autoload!(Aws::Firehose)
-    Aws.eager_autoload!(services: %w(Firehose))
+    #Aws.eager_autoload!(services: %w(Firehose))
 
     # Create Firehose API client
     @firehose = aws_firehose_client
@@ -139,8 +142,7 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
             data: encoded_event
         }
       })
-    # rescue Aws::Errors::Base => error
-    rescue RuntimeError => error
+    rescue Exception => error
       # TODO Retry policy
       # TODO Keep failed events somewhere, probably in fallback file
       @logger.error "Firehose: AWS error", :error => error
