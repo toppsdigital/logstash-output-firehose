@@ -85,6 +85,7 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
 
     # Register coder: comma separated line -> SPECIFIED_CODEC_FMT, call handler after to deliver encoded data to Firehose
     @codec.on_event do |event, encoded_event|
+      @logger.debug("Event info", :event => event, :encoded_event => encoded_event)
       handle_event(encoded_event)
     end
   end
@@ -142,11 +143,17 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
             data: encoded_event
         }
       })
+    rescue Aws::Firehose::Errors::ResourceNotFoundException => error
+      # Firehose stream not found
+      @logger.error "Firehose: AWS resource error", :error => error
+      raise LogStash::Error, "Firehose: AWS resource not found error: #{error}"
     rescue Exception => error
       # TODO Retry policy
+      # TODO Fallback policy
       # TODO Keep failed events somewhere, probably in fallback file
-      @logger.error "Firehose: AWS error", :error => error
-      raise LogStash::Error, "Firehose: AWS data delivery error: #{error}"
+      @logger.error "Firehose: AWS delivery error", :error => error
+      @logger.info "Failed to deliver event: #{encoded_event}"
+      @logger.error "TODO Retry and fallback policy implementation"
     end
   end
 
