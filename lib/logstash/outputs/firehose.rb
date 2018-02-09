@@ -45,6 +45,8 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
 
   # make properties visible for tests
   attr_accessor :stream
+  attr_accessor :access_key_id
+  attr_accessor :secret_access_key
   attr_accessor :codec
 
   config_name "firehose"
@@ -55,6 +57,8 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
   # Firehose stream info
   config :region, :validate => :string, :default => "us-east-1"
   config :stream, :validate => :string
+  config :access_key_id, :validate => :string
+  config :secret_access_key, :validate => :string
 
   #
   # Register plugin
@@ -65,6 +69,9 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
     # http://ruby.awsblog.com/post/Tx16QY1CI5GVBFT/Threading-with-the-AWS-SDK-for-Ruby
     #Aws.eager_autoload!(Aws::Firehose)
     #Aws.eager_autoload!(services: %w(Firehose))
+
+    # Create Firehose API client
+    @firehose = aws_firehose_client
 
     # Validate stream name
     if @stream.nil? || @stream.empty?
@@ -98,7 +105,8 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
   # Build AWS Firehose client
   private
   def aws_firehose_client
-    @firehose ||= Aws::Firehose::Client.new(aws_full_options)
+    @logger.info "Registering Firehose output", :stream => @stream, :region => @region
+    @firehose = Aws::Firehose::Client.new(aws_full_options)
   end
 
   # Build and return AWS client options map
@@ -129,7 +137,7 @@ class LogStash::Outputs::Firehose < LogStash::Outputs::Base
     @logger.debug "Pushing encoded event: #{encoded_event}"
 
     begin
-      aws_firehose_client.put_record({
+      @firehose.put_record({
         delivery_stream_name: @stream,
         record: {
             data: encoded_event
